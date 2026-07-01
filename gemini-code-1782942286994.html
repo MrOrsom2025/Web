@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taskmaster UK: The Grand Sorting Quiz</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-color: #ffffff;
+            --accent-color: #dd1c1a;
+            --success-color: #4caf50;
+            --drop-hover: #404040;
+            --scrollbar-bg: #222;
+            --scrollbar-thumb: #555;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 95vh;
+            overflow: hidden;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            color: var(--accent-color);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 1.8rem;
+        }
+
+        #scoreboard {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            background: var(--card-bg);
+            padding: 8px 20px;
+            border-radius: 8px;
+            width: fit-content;
+            margin: 0 auto;
+            border: 1px solid #444;
+        }
+
+        .score-correct { color: var(--success-color); }
+        .score-errors { color: var(--accent-color); }
+
+        /* --- SERIES GRID (TOP) --- */
+        #series-container {
+            display: grid;
+            grid-template-columns: repeat(11, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+        }
+
+        .series-box {
+            background-color: var(--card-bg);
+            border: 2px dashed #555;
+            border-radius: 6px;
+            padding: 10px 2px;
+            text-align: center;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 55px;
+        }
+
+        .series-box.drag-over {
+            background-color: var(--drop-hover);
+            border-color: var(--accent-color);
+            transform: scale(1.05);
+        }
+
+        .series-number {
+            font-size: 1.1rem;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 3px;
+        }
+
+        .series-progress {
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+
+        .series-box.complete {
+            border: 2px solid var(--success-color);
+            background-color: rgba(76, 175, 80, 0.1);
+        }
+
+        .series-box.complete .series-progress {
+            color: var(--success-color);
+            font-weight: bold;
+        }
+
+        /* --- CONTESTANT POOL (BOTTOM) --- */
+        #pool-header {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 5px;
+            flex-shrink: 0;
+        }
+
+        #pool-wrapper {
+            flex-grow: 1;
+            overflow-y: auto;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-bg);
+        }
+
+        #contestants-pool {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-content: flex-start;
+        }
+
+        .contestant-card {
+            background-color: #f5f5f5;
+            color: #000;
+            padding: 6px 14px;
+            border-radius: 16px;
+            cursor: grab;
+            font-weight: 600;
+            font-size: 0.85rem;
+            user-select: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transition: transform 0.1s ease;
+        }
+
+        .contestant-card:active {
+            cursor: grabbing;
+        }
+
+        .contestant-card.dragging {
+            opacity: 0.4;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Taskmaster: The Series Sorter</h1>
+        <div id="scoreboard">
+            <div>Correct: <span id="correct-count" class="score-correct">0</span> / 110</div>
+            <div>Errors: <span id="error-count" class="score-errors">0</span></div>
+        </div>
+    </header>
+
+    <div id="series-container"></div>
+
+    <div id="pool-header">Contestants Remaining</div>
+    <div id="pool-wrapper">
+        <div id="contestants-pool"></div>
+    </div>
+
+    <script>
+        const contestantsData = [
+            // Series 1
+            { id: "1", name: "Frank Skinner", series: 1 }, { id: "2", name: "Josh Widdicombe", series: 1 }, { id: "3", name: "Roisin Conaty", series: 1 }, { id: "4", name: "Romesh Ranganathan", series: 1 }, { id: "5", name: "Tim Key", series: 1 },
+            // Series 2
+            { id: "6", name: "Doc Brown", series: 2 }, { id: "7", name: "Joe Wilkinson", series: 2 }, { id: "8", name: "Jon Richardson", series: 2 }, { id: "9", name: "Katherine Ryan", series: 2 }, { id: "10", name: "Richard Osman", series: 2 },
+            // Series 3
+            { id: "11", name: "Al Murray", series: 3 }, { id: "12", name: "Dave Gorman", series: 3 }, { id: "13", name: "Paul Chowdhry", series: 3 }, { id: "14", name: "Rob Beckett", series: 3 }, { id: "15", name: "Sara Pascoe", series: 3 },
+            // Series 4
+            { id: "16", name: "Hugh Dennis", series: 4 }, { id: "17", name: "Joe Lycett", series: 4 }, { id: "18", name: "Lolly Adefope", series: 4 }, { id: "19", name: "Mel Giedroyc", series: 4 }, { id: "20", name: "Noel Fielding", series: 4 },
+            // Series 5
+            { id: "21", name: "Aisling Bea", series: 5 }, { id: "22", name: "Bob Mortimer", series: 5 }, { id: "23", name: "Mark Watson", series: 5 }, { id: "24", name: "Nish Kumar", series: 5 }, { id: "25", name: "Sally Phillips", series: 5 },
+            // Series 6
+            { id: "26", name: "Alice Levine", series: 6 }, { id: "27", name: "Asim Chaudhry", series: 6 }, { id: "28", name: "Liza Tarbuck", series: 6 }, { id: "29", name: "Russell Howard", series: 6 }, { id: "30", name: "Tim Vine", series: 6 },
+            // Series 7
+            { id: "31", name: "James Acaster", series: 7 }, { id: "32", name: "Jessica Knappett", series: 7 }, { id: "33", name: "Kerry Godliman", series: 7 }, { id: "34", name: "Phil Wang", series: 7 }, { id: "35", name: "Rhod Gilbert", series: 7 },
+            // Series 8
+            { id: "36", name: "Iain Stirling", series: 8 }, { id: "37", name: "Joe Thomas", series: 8 }, { id: "38", name: "Lou Sanders", series: 8 }, { id: "39", name: "Paul Sinha", series: 8 }, { id: "40", name: "Sian Gibson", series: 8 },
+            // Series 9
+            { id: "41", name: "David Baddiel", series: 9 }, { id: "42", name: "Ed Gamble", series: 9 }, { id: "43", name: "Jo Brand", series: 9 }, { id: "44", name: "Katy Wix", series: 9 }, { id: "45", name: "Rose Matafeo", series: 9 },
+            // Series 10
+            { id: "46", name: "Daisy May Cooper", series: 10 }, { id: "47", name: "Johnny Vegas", series: 10 }, { id: "48", name: "Katherine Parkinson", series: 10 }, { id: "49", name: "Mawaan Rizwan", series: 10 }, { id: "50", name: "Richard Herring", series: 10 },
+            // Series 11
+            { id: "51", name: "Charlotte Ritchie", series: 11 }, { id: "52", name: "Jamali Maddix", series: 11 }, { id: "53", name: "Lee Mack", series: 11 }, { id: "54", name: "Mike Wozniak", series: 11 }, { id: "55", name: "Sarah Kendall", series: 11 },
+            // Series 12
+            { id: "56", name: "Alan Davies", series: 12 }, { id: "57", name: "Desiree Burch", series: 12 }, { id: "58", name: "Guz Khan", series: 12 }, { id: "59", name: "Morgana Robinson", series: 12 }, { id: "60", name: "Victoria Coren Mitchell", series: 12 },
+            // Series 13
+            { id: "61", name: "Ardal O'Hanlon", series: 13 }, { id: "62", name: "Bridget Christie", series: 13 }, { id: "63", name: "Chris Ramsey", series: 13 }, { id: "64", name: "Judi Love", series: 13 }, { id: "65", name: "Sophie Duker", series: 13 },
+            // Series 14
+            { id: "66", name: "Dara Ó Briain", series: 14 }, { id: "67", name: "Fern Brady", series: 14 }, { id: "68", name: "John Kearns", series: 14 }, { id: "69", name: "Munya Chawawa", series: 14 }, { id: "70", name: "Sarah Millican", series: 14 },
+            // Series 15
+            { id: "71", name: "Frankie Boyle", series: 15 }, { id: "72", name: "Ivo Graham", series: 15 }, { id: "73", name: "Jenny Eclair", series: 15 }, { id: "74", name: "Kiell Smith-Bynoe", series: 15 }, { id: "75", name: "Mae Martin", series: 15 },
+            // Series 16
+            { id: "76", name: "Julian Clary", series: 16 }, { id: "77", name: "Lucy Beaumont", series: 16 }, { id: "78", name: "Sam Campbell", series: 16 }, { id: "79", name: "Sue Perkins", series: 16 }, { id: "80", name: "Susan Wokoma", series: 16 },
+            // Series 17
+            { id: "81", name: "Joanne McNally", series: 17 }, { id: "82", name: "John Robins", series: 17 }, { id: "83", name: "Nick Mohammed", series: 17 }, { id: "84", name: "Sophie Willan", series: 17 }, { id: "85", name: "Steve Pemberton", series: 17 },
+            // Series 18
+            { id: "86", name: "Andy Zaltzman", series: 18 }, { id: "87", name: "Babatunde Aléshé", series: 18 }, { id: "88", name: "Emma Sidi", series: 18 }, { id: "89", name: "Jack Dee", series: 18 }, { id: "90", name: "Rosie Jones", series: 18 },
+            // Series 19
+            { id: "91", name: "Fatiha El-Ghorri", series: 19 }, { id: "92", name: "Jason Mantzoukas", series: 19 }, { id: "93", name: "Mathew Baynton", series: 19 }, { id: "94", name: "Rosie Ramsey", series: 19 }, { id: "95", name: "Stevie Martin", series: 19 },
+            // Series 20
+            { id: "96", name: "Ania Magliano", series: 20 }, { id: "97", name: "Maisie Adam", series: 20 }, { id: "98", name: "Phil Ellis", series: 20 }, { id: "99", name: "Reece Shearsmith", series: 20 }, { id: "100", name: "Sanjeev Bhaskar", series: 20 },
+            // Series 21
+            { id: "101", name: "Amy Gledhill", series: 21 }, { id: "102", name: "Armando Iannucci", series: 21 }, { id: "103", name: "Joanna Page", series: 21 }, { id: "104", name: "Joel Dommett", series: 21 }, { id: "105", name: "Kumail Nanjiani", series: 21 },
+            // Series 22
+            { id: "106", name: "Chloe Petts", series: 22 }, { id: "107", name: "Isy Suttie", series: 22 }, { id: "108", name: "Matt Lucas", series: 22 }, { id: "109", name: "Nina Conti", series: 22 }, { id: "110", name: "Richard Ayoade", series: 22 }
+        ];
+
+        const TOTAL_SERIES = 22;
+        const PER_SERIES_COUNT = 5;
+        
+        let errors = 0;
+        let correct = 0;
+
+        const seriesProgress = {};
+        for (let i = 1; i <= TOTAL_SERIES; i++) {
+            seriesProgress[i] = 0;
+        }
+
+        const seriesContainer = document.getElementById('series-container');
+        const poolContainer = document.getElementById('contestants-pool');
+        const errorDisplay = document.getElementById('error-count');
+        const correctDisplay = document.getElementById('correct-count');
+
+        function createSeriesBoxes() {
+            for (let i = 1; i <= TOTAL_SERIES; i++) {
+                const box = document.createElement('div');
+                box.classList.add('series-box');
+                box.dataset.series = i;
+
+                box.innerHTML = `
+                    <span class="series-number">S${i}</span>
+                    <span class="series-progress" id="progress-${i}">0 / ${PER_SERIES_COUNT}</span>
+                `;
+
+                box.addEventListener('dragover', dragOver);
+                box.addEventListener('dragenter', dragEnter);
+                box.addEventListener('dragleave', dragLeave);
+                box.addEventListener('drop', handleDrop);
+
+                seriesContainer.appendChild(box);
+            }
+        }
+
+        function populatePool() {
+            const shuffled = [...contestantsData];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+
+            shuffled.forEach(c => {
+                const card = document.createElement('div');
+                card.classList.add('contestant-card');
+                card.draggable = true;
+                card.textContent = c.name;
+                card.id = `contestant-${c.id}`;
+                card.dataset.correctSeries = c.series;
+
+                card.addEventListener('dragstart', dragStart);
+                card.addEventListener('dragend', dragEnd);
+
+                poolContainer.appendChild(card);
+            });
+        }
+
+        function dragStart(e) {
+            e.dataTransfer.setData('text/plain', e.target.id);
+            setTimeout(() => {
+                e.target.classList.add('dragging');
+            }, 0);
+        }
+
+        function dragEnd(e) {
+            e.target.classList.remove('dragging');
+        }
+
+        function dragOver(e) {
+            e.preventDefault();
+        }
+
+        function dragEnter(e) {
+            e.preventDefault();
+            const targetBox = e.target.closest('.series-box');
+            if (targetBox && !targetBox.classList.contains('complete')) {
+                targetBox.classList.add('drag-over');
+            }
+        }
+
+        function dragLeave(e) {
+            const targetBox = e.target.closest('.series-box');
+            if (targetBox) {
+                targetBox.classList.remove('drag-over');
+            }
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const targetBox = e.target.closest('.series-box');
+            if (!targetBox) return;
+
+            targetBox.classList.remove('drag-over');
+            
+            const targetSeriesNum = parseInt(targetBox.dataset.series);
+            if (seriesProgress[targetSeriesNum] >= PER_SERIES_COUNT) return;
+
+            const cardId = e.dataTransfer.getData('text/plain');
+            const card = document.getElementById(cardId);
+            if (!card) return;
+
+            const correctSeriesNum = parseInt(card.dataset.correctSeries);
+
+            if (targetSeriesNum === correctSeriesNum) {
+                card.remove(); 
+                correct++;
+                correctDisplay.textContent = correct;
+                
+                seriesProgress[targetSeriesNum]++;
+                const progressSpan = document.getElementById(`progress-${targetSeriesNum}`);
+                progressSpan.textContent = `${seriesProgress[targetSeriesNum]} / ${PER_SERIES_COUNT}`;
+
+                if (seriesProgress[targetSeriesNum] === PER_SERIES_COUNT) {
+                    targetBox.classList.add('complete');
+                }
+                
+                if (correct === contestantsData.length) {
+                    setTimeout(() => alert('Task accomplished! All 110 contestants have been correctly sorted.'), 300);
+                }
+            } else {
+                errors++;
+                errorDisplay.textContent = errors;
+                
+                card.style.transform = 'scale(1.1)';
+                setTimeout(() => card.style.transform = 'scale(1)', 200);
+            }
+        }
+
+        createSeriesBoxes();
+        populatePool();
+    </script>
+</body>
+</html>
