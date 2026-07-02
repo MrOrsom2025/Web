@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Taskmaster UK: The Grand Sorting Quiz</title>
+    
+    <!-- Polyfill to enable HTML5 Drag and Drop on mobile touch screens -->
+    <script src="https://unpkg.com/drag-drop-touch"></script>
+
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-color: #ffffff;
+            --accent-color: #dd1c1a;
+            --success-color: #4caf50;
+            --drop-hover: #404040;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            box-sizing: border-box;
+            /* Removed overflow:hidden so smaller screens can scroll if needed rather than cutting off */
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 15px;
+            flex-shrink: 0;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            color: var(--accent-color);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 1.5rem;
+        }
+
+        #scoreboard {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            background: var(--card-bg);
+            padding: 8px 20px;
+            border-radius: 8px;
+            width: fit-content;
+            margin: 0 auto;
+            border: 1px solid #444;
+        }
+
+        .score-correct { color: var(--success-color); }
+        .score-errors { color: var(--accent-color); }
+
+        /* --- RESPONSIVE SERIES GRID --- */
+        #series-container {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+            /* Default to Mobile Layout (4 columns) */
+            grid-template-columns: repeat(4, 1fr);
+        }
+
+        /* Desktop Layout Override (11 columns for wide screens) */
+        @media (min-width: 768px) {
+            #series-container {
+                grid-template-columns: repeat(11, 1fr);
+                gap: 10px;
+                margin-bottom: 40px;
+            }
+        }
+
+        .series-box {
+            background-color: var(--card-bg);
+            border: 1px dashed #555;
+            border-radius: 6px;
+            padding: 12px 0; 
+            text-align: center;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 60px; 
+        }
+
+        .series-box.drag-over {
+            background-color: var(--drop-hover);
+            border-color: var(--accent-color);
+            transform: scale(1.05);
+            z-index: 2;
+        }
+
+        .series-number {
+            font-size: 1.1rem;
+            font-weight: bold;
+            display: block;
+        }
+
+        .series-progress {
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-top: 4px;
+        }
+
+        .series-box.complete {
+            border: 1px solid var(--success-color);
+            background-color: rgba(76, 175, 80, 0.1);
+        }
+
+        .series-box.complete .series-progress {
+            color: var(--success-color);
+            font-weight: bold;
+        }
+
+        /* --- ACTIVE CONTESTANT ZONE (BOTTOM) --- */
+        #active-zone {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 30px;
+            min-height: 150px;
+        }
+
+        #active-zone-title {
+            font-size: 1.2rem;
+            margin-bottom: 25px;
+            color: #ccc;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .contestant-card {
+            background-color: #f5f5f5;
+            color: #000;
+            padding: 18px 40px;
+            border-radius: 40px;
+            cursor: grab;
+            font-weight: bold;
+            font-size: 1.5rem;
+            text-align: center;
+            user-select: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            transition: transform 0.1s ease, opacity 0.2s ease;
+            touch-action: none;
+        }
+
+        .contestant-card:active {
+            cursor: grabbing;
+            transform: scale(1.05);
+        }
+
+        .contestant-card.dragging {
+            opacity: 0.6;
+        }
+
+        @keyframes errorShake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            50% { transform: translateX(10px); }
+            75% { transform: translateX(-10px); }
+            100% { transform: translateX(0); }
+        }
+
+        .shake {
+            animation: errorShake 0.4s ease-in-out;
+            background-color: #ffcccc !important;
+        }
+
+        /* --- CONGRATULATIONS MODAL --- */
+        #modal-overlay {
+            display: none; 
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        .modal-content {
+            background-color: var(--card-bg);
+            border: 2px solid #ceb352; 
+            border-radius: 12px;
+            padding: 40px 20px;
+            max-width: 90%;
+            width: 450px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .modal-title {
+            color: #ceb352;
+            font-size: 2.2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+            margin-top: 0;
+        }
+
+        .modal-text {
+            font-size: 1.2rem;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        .modal-insult {
+            display: block;
+            margin-top: 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--accent-color);
+            font-style: italic;
+        }
+
+        .restart-btn {
+            background-color: var(--success-color);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            transition: background-color 0.2s;
+        }
+        
+        .restart-btn:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Taskmaster Sorter</h1>
+        <div id="scoreboard">
+            <div>Correct: <span id="correct-count" class="score-correct">0</span>/110</div>
+            <div>Errors: <span id="error-count" class="score-errors">0</span></div>
+        </div>
+    </header>
+
+    <div id="series-container"></div>
+
+    <div id="active-zone">
+        <div id="active-zone-title">Who is this?</div>
+        <div id="card-container"></div>
+    </div>
+
+    <!-- Modal Popover -->
+    <div id="modal-overlay">
+        <div class="modal-content">
+            <h2 class="modal-title">Task Accomplished</h2>
+            <div class="modal-text">
+                A general well done.<br><br>
+                You have successfully sorted all 110 contestants with a total of <strong id="final-errors-text">0</strong> errors.
+                <span class="modal-insult" id="modal-insult-text"></span>
+            </div>
+            <button class="restart-btn" onclick="location.reload()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        const contestantsData = [
+            { id: "1", name: "Frank Skinner", series: 1 }, { id: "2", name: "Josh Widdicombe", series: 1 }, { id: "3", name: "Roisin Conaty", series: 1 }, { id: "4", name: "Romesh Ranganathan", series: 1 }, { id: "5", name: "Tim Key", series: 1 },
+            { id: "6", name: "Doc Brown", series: 2 }, { id: "7", name: "Joe Wilkinson", series: 2 }, { id: "8", name: "Jon Richardson", series: 2 }, { id: "9", name: "Katherine Ryan", series: 2 }, { id: "10", name: "Richard Osman", series: 2 },
+            { id: "11", name: "Al Murray", series: 3 }, { id: "12", name: "Dave Gorman", series: 3 }, { id: "13", name: "Paul Chowdhry", series: 3 }, { id: "14", name: "Rob Beckett", series: 3 }, { id: "15", name: "Sara Pascoe", series: 3 },
+            { id: "16", name: "Hugh Dennis", series: 4 }, { id: "17", name: "Joe Lycett", series: 4 }, { id: "18", name: "Lolly Adefope", series: 4 }, { id: "19", name: "Mel Giedroyc", series: 4 }, { id: "20", name: "Noel Fielding", series: 4 },
+            { id: "21", name: "Aisling Bea", series: 5 }, { id: "22", name: "Bob Mortimer", series: 5 }, { id: "23", name: "Mark Watson", series: 5 }, { id: "24", name: "Nish Kumar", series: 5 }, { id: "25", name: "Sally Phillips", series: 5 },
+            { id: "26", name: "Alice Levine", series: 6 }, { id: "27", name: "Asim Chaudhry", series: 6 }, { id: "28", name: "Liza Tarbuck", series: 6 }, { id: "29", name: "Russell Howard", series: 6 }, { id: "30", name: "Tim Vine", series: 6 },
+            { id: "31", name: "James Acaster", series: 7 }, { id: "32", name: "Jessica Knappett", series: 7 }, { id: "33", name: "Kerry Godliman", series: 7 }, { id: "34", name: "Phil Wang", series: 7 }, { id: "35", name: "Rhod Gilbert", series: 7 },
+            { id: "36", name: "Iain Stirling", series: 8 }, { id: "37", name: "Joe Thomas", series: 8 }, { id: "38", name: "Lou Sanders", series: 8 }, { id: "39", name: "Paul Sinha", series: 8 }, { id: "40", name: "Sian Gibson", series: 8 },
+            { id: "41", name: "David Baddiel", series: 9 }, { id: "42", name: "Ed Gamble", series: 9 }, { id: "43", name: "Jo Brand", series: 9 }, { id: "44", name: "Katy Wix", series: 9 }, { id: "45", name: "Rose Matafeo", series: 9 },
+            { id: "46", name: "Daisy May Cooper", series: 10 }, { id: "47", name: "Johnny Vegas", series: 10 }, { id: "48", name: "Katherine Parkinson", series: 10 }, { id: "49", name: "Mawaan Rizwan", series: 10 }, { id: "50", name: "Richard Herring", series: 10 },
+            { id: "51", name: "Charlotte Ritchie", series: 11 }, { id: "52", name: "Jamali Maddix", series: 11 }, { id: "53", name: "Lee Mack", series: 11 }, { id: "54", name: "Mike Wozniak", series: 11 }, { id: "55", name: "Sarah Kendall", series: 11 },
+            { id: "56", name: "Alan Davies", series: 12 }, { id: "57", name: "Desiree Burch", series: 12 }, { id: "58", name: "Guz Khan", series: 12 }, { id: "59", name: "Morgana Robinson", series: 12 }, { id: "60", name: "Victoria Coren Mitchell", series: 12 },
+            { id: "61", name: "Ardal O'Hanlon", series: 13 }, { id: "62", name: "Bridget Christie", series: 13 }, { id: "63", name: "Chris Ramsey", series: 13 }, { id: "64", name: "Judi Love", series: 13 }, { id: "65", name: "Sophie Duker", series: 13 },
+            { id: "66", name: "Dara Ó Briain", series: 14 }, { id: "67", name: "Fern Brady", series: 14 }, { id: "68", name: "John Kearns", series: 14 }, { id: "69", name: "Munya Chawawa", series: 14 }, { id: "70", name: "Sarah Millican", series: 14 },
+            { id: "71", name: "Frankie Boyle", series: 15 }, { id: "72", name: "Ivo Graham", series: 15 }, { id: "73", name: "Jenny Eclair", series: 15 }, { id: "74", name: "Kiell Smith-Bynoe", series: 15 }, { id: "75", name: "Mae Martin", series: 15 },
+            { id: "76", name: "Julian Clary", series: 16 }, { id: "77", name: "Lucy Beaumont", series: 16 }, { id: "78", name: "Sam Campbell", series: 16 }, { id: "79", name: "Sue Perkins", series: 16 }, { id: "80", name: "Susan Wokoma", series: 16 },
+            { id: "81", name: "Joanne McNally", series: 17 }, { id: "82", name: "John Robins", series: 17 }, { id: "83", name: "Nick Mohammed", series: 17 }, { id: "84", name: "Sophie Willan", series: 17 }, { id: "85", name: "Steve Pemberton", series: 17 },
+            { id: "86", name: "Andy Zaltzman", series: 18 }, { id: "87", name: "Babatunde Aléshé", series: 18 }, { id: "88", name: "Emma Sidi", series: 18 }, { id: "89", name: "Jack Dee", series: 18 }, { id: "90", name: "Rosie Jones", series: 18 },
+            { id: "91", name: "Fatiha El-Ghorri", series: 19 }, { id: "92", name: "Jason Mantzoukas", series: 19 }, { id: "93", name: "Mathew Baynton", series: 19 }, { id: "94", name: "Rosie Ramsey", series: 19 }, { id: "95", name: "Stevie Martin", series: 19 },
+            { id: "96", name: "Ania Magliano", series: 20 }, { id: "97", name: "Maisie Adam", series: 20 }, { id: "98", name: "Phil Ellis", series: 20 }, { id: "99", name: "Reece Shearsmith", series: 20 }, { id: "100", name: "Sanjeev Bhaskar", series: 20 },
+            { id: "101", name: "Amy Gledhill", series: 21 }, { id: "102", name: "Armando Iannucci", series: 21 }, { id: "103", name: "Joanna Page", series: 21 }, { id: "104", name: "Joel Dommett", series: 21 }, { id: "105", name: "Kumail Nanjiani", series: 21 },
+            { id: "106", name: "Chloe Petts", series: 22 }, { id: "107", name: "Isy Suttie", series: 22 }, { id: "108", name: "Matt Lucas", series: 22 }, { id: "109", name: "Nina Conti", series: 22 }, { id: "110", name: "Richard Ayoade", series: 22 }
+        ];
+
+        const insults = [
+            "What a filthy little ferret you are.",
+            "You are a sneaky pasta snake.",
+            "You are not an egg man.",
+            "It's quiz o'clock, tick tock.",
+            "You're a sinner. You have sinned.",
+            "Bubbly f*ck!",
+            "Ah, if only your hands were your feet.",
+            "Are you the spider?",
+            "Are we the monster?"
+        ];
+
+        const TOTAL_SERIES = 22;
+        const PER_SERIES_COUNT = 5;
+        
+        let errors = 0;
+        let correct = 0;
+        let activeIndex = 0;
+        let shuffledContestants = [];
+
+        const seriesProgress = {};
+        for (let i = 1; i <= TOTAL_SERIES; i++) {
+            seriesProgress[i] = 0;
+        }
+
+        const seriesContainer = document.getElementById('series-container');
+        const cardContainer = document.getElementById('card-container');
+        const titleZone = document.getElementById('active-zone-title');
+        const errorDisplay = document.getElementById('error-count');
+        const correctDisplay = document.getElementById('correct-count');
+        const modalOverlay = document.getElementById('modal-overlay');
+        const finalErrorsText = document.getElementById('final-errors-text');
+        const modalInsultText = document.getElementById('modal-insult-text');
+
+        function createSeriesBoxes() {
+            for (let i = 1; i <= TOTAL_SERIES; i++) {
+                const box = document.createElement('div');
+                box.classList.add('series-box');
+                box.dataset.series = i;
+
+                box.innerHTML = `
+                    <span class="series-number">S${i}</span>
+                    <span class="series-progress" id="progress-${i}">0/5</span>
+                `;
+
+                box.addEventListener('dragover', dragOver);
+                box.addEventListener('dragenter', dragEnter);
+                box.addEventListener('dragleave', dragLeave);
+                box.addEventListener('drop', handleDrop);
+
+                seriesContainer.appendChild(box);
+            }
+        }
+
+        function initGame() {
+            shuffledContestants = [...contestantsData];
+            for (let i = shuffledContestants.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffledContestants[i], shuffledContestants[j]] = [shuffledContestants[j], shuffledContestants[i]];
+            }
+            renderActiveContestant();
+        }
+
+        function renderActiveContestant() {
+            cardContainer.innerHTML = ''; 
+
+            if (activeIndex >= shuffledContestants.length) {
+                titleZone.style.display = "none";
+                showFinalModal();
+                return;
+            }
+
+            const c = shuffledContestants[activeIndex];
+            const card = document.createElement('div');
+            card.classList.add('contestant-card');
+            card.draggable = true;
+            card.textContent = c.name;
+            card.id = `contestant-${c.id}`;
+            card.dataset.correctSeries = c.series;
+
+            card.addEventListener('dragstart', dragStart);
+            card.addEventListener('dragend', dragEnd);
+
+            cardContainer.appendChild(card);
+        }
+
+        function showFinalModal() {
+            finalErrorsText.textContent = errors;
+            
+            // Pick a random quote from the insults array
+            const randomQuote = insults[Math.floor(Math.random() * insults.length)];
+            modalInsultText.textContent = `"${randomQuote}"`;
+            
+            modalOverlay.style.display = 'flex';
+        }
+
+        function dragStart(e) {
+            e.dataTransfer.setData('text/plain', e.target.id);
+            setTimeout(() => e.target.classList.add('dragging'), 0);
+        }
+
+        function dragEnd(e) {
+            e.target.classList.remove('dragging');
+        }
+
+        function dragOver(e) { e.preventDefault(); }
+
+        function dragEnter(e) {
+            e.preventDefault();
+            const targetBox = e.target.closest('.series-box');
+            if (targetBox && !targetBox.classList.contains('complete')) {
+                targetBox.classList.add('drag-over');
+            }
+        }
+
+        function dragLeave(e) {
+            const targetBox = e.target.closest('.series-box');
+            if (targetBox) targetBox.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const targetBox = e.target.closest('.series-box');
+            if (!targetBox) return;
+
+            targetBox.classList.remove('drag-over');
+            
+            const targetSeriesNum = parseInt(targetBox.dataset.series);
+            if (seriesProgress[targetSeriesNum] >= PER_SERIES_COUNT) return;
+
+            const cardId = e.dataTransfer.getData('text/plain');
+            const card = document.getElementById(cardId);
+            if (!card) return;
+
+            const correctSeriesNum = parseInt(card.dataset.correctSeries);
+
+            if (targetSeriesNum === correctSeriesNum) {
+                correct++;
+                correctDisplay.textContent = correct;
+                
+                seriesProgress[targetSeriesNum]++;
+                document.getElementById(`progress-${targetSeriesNum}`).textContent = `${seriesProgress[targetSeriesNum]}/5`;
+
+                if (seriesProgress[targetSeriesNum] === PER_SERIES_COUNT) {
+                    targetBox.classList.add('complete');
+                }
+                
+                activeIndex++;
+                renderActiveContestant(); 
+                
+            } else {
+                errors++;
+                errorDisplay.textContent = errors;
+                
+                card.classList.remove('shake');
+                void card.offsetWidth; 
+                card.classList.add('shake');
+                
+                setTimeout(() => card.classList.remove('shake'), 400);
+            }
+        }
+
+        createSeriesBoxes();
+        initGame();
+    </script>
+</body>
+</html>
